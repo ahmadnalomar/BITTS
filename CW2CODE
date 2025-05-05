@@ -1,0 +1,239 @@
+#BITTS CW 2 
+#Topic - How can Café 65 optimize its daily staffing schedule and 
+#production plan to minimize cost and waste, while meeting customer demand forecasted 
+#using machine learning techniques?
+
+#Dataset Generation - 
+
+
+import pandas as pd
+import numpy as np 
+import matplotlib.pyplot as plt
+import seaborn as sns #good library for plotting 
+import random 
+import pulp
+
+#Setting a seed to ensure reproductibiility 
+np.random.seed(15) 
+
+
+days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+hours = list(range(8, 17))  # 8 AM to 5 PM (inclusive)
+
+
+weather = ["Sunny", "Cloudy", "Rainy"]
+
+
+price_coffee = 2.5
+price_pastry = 3.0
+price_meal = 5.0
+
+
+Records=[]
+
+
+for day_index in range(60): 
+    present_day=days[day_index%7] 
+    for hour in hours:
+        present_weather=np.random.choice(weather,p=[0.2,0.5,0.3]) #MAnchester Weather Probs
+        base_footfall=np.random.randint(30,70)
+        # Adjust footfall depending on the weather
+        if weather == "Cloudy":
+            footfall = int(base_footfall * 0.9)  # reduce by 10% if cloudy [Slight Chance 
+            # of people eating out]
+        elif weather == "Sunny":
+            footfall = int(base_footfall * 0.75)  # reduce by 25% if Sunny [More People Eat Out]
+        else:
+            footfall = base_footfall 
+          
+        orders = np.random.randint(int(footfall * 0.7), int(footfall * 0.9) + 1) 
+        
+        coffee_orders = int(orders * np.random.uniform(0.4, 0.6))  
+        meal_orders = int(orders * np.random.uniform(0.2, 0.4))  
+        pastry_orders = orders - coffee_orders - meal_orders  
+        num_staff = np.random.randint(1, 3) 
+        wait_time = round(np.clip((orders / (num_staff * 10)) + np.random.normal(0, 1), 1, 10), 2)
+        total_sales = round(
+          coffee_orders * price_coffee +
+          pastry_orders * price_pastry +
+          meal_orders * price_meal, 2  
+        )
+        Records.append({
+            "day": present_day,
+            "hour": hour,
+            "weather": present_weather,
+            "footfall": footfall,
+            "orders": orders,
+            "avg_wait_time": wait_time,
+            "num_staff": num_staff,
+            "coffee_orders": coffee_orders,
+            "pastry_orders": pastry_orders,
+            "meal_orders": meal_orders,
+            "total_sales": total_sales
+        })
+
+df = pd.DataFrame(Records) 
+
+df.to_csv("cafe65_simulated_data.csv", index=False)  
+print("Simulation complete. Data saved")
+#----------
+#Initial Data Analysis 
+#1- Avg Sales by Hour Plot  
+df = pd.read_csv("cafe65_simulated_data.csv")
+
+
+sns.set(style="whitegrid")
+avg_sales_by_hour = df.groupby("hour")["total_sales"].mean()
+
+plt.figure(figsize=(10, 5))  
+sns.lineplot(x=avg_sales_by_hour.index, y=avg_sales_by_hour.values, marker='o') 
+plt.title("Average Hourly Sales at Café 65")  
+plt.xlabel("Hour of Day") 
+plt.ylabel("Average Sales (£)")  
+plt.xticks(range(8, 17)) 
+plt.tight_layout()  
+plt.show() 
+#----------
+#2-Avg Sales by Day 
+day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+avg_sales_by_day = df.groupby("day")["total_sales"].mean().reindex(day_order)
+plt.figure(figsize=(10, 5))
+sns.barplot(x=avg_sales_by_day.index, y=avg_sales_by_day.values, palette="Blues_d") 
+plt.title("Average Daily Sales at Café 65")
+plt.xlabel("Day of Week")
+plt.ylabel("Average Sales (£)")
+plt.tight_layout()
+plt.show()
+#----------
+#3 Wait time vs Staff count 
+plt.figure(figsize=(8, 5))
+sns.boxplot(x="num_staff", y="avg_wait_time", data=df, palette="Set2")  
+plt.title("Wait Time vs Number of Staff")
+plt.xlabel("Number of Staff")
+plt.ylabel("Average Wait Time (minutes)")
+plt.tight_layout()
+plt.show()    
+#----------
+#4 Correlation Heat Map
+corr_matrix = df[["footfall", "orders", "avg_wait_time", "num_staff", "total_sales"]].corr()
+
+#heatmap to show correlation coefficients
+plt.figure(figsize=(10, 6))
+sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f")  # annot=True shows numbers, cmap sets color scheme
+plt.title("Correlation Heatmap of Key Café Metrics")
+plt.tight_layout()
+plt.show()
+
+#----------
+#5 Perform RF and LR see what gives a better predictive analysis 
+from sklearn.model_selection import train_test_split  
+from sklearn.linear_model import LinearRegression  
+from sklearn.metrics import mean_absolute_error, r2_score  
+
+#Linear Regression  
+df_encoded = pd.get_dummies(df, columns=["day", "weather"], drop_first=True)
+X = df_encoded.drop(["avg_wait_time", "total_sales"], axis=1)
+y = df_encoded["avg_wait_time"]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=15)
+model = LinearRegression()
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+mae = mean_absolute_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+print("Mean Absolute Error (MAE):", round(mae, 2), "minutes")
+print("R-squared (R²):", round(r2, 2))
+
+#Random Forest
+from sklearn.ensemble import RandomForestRegressor
+model_rf = RandomForestRegressor(n_estimators=100, random_state=15)
+model_rf.fit(X_train, y_train)
+y_pred_rf = model_rf.predict(X_test)
+mae_rf = mean_absolute_error(y_test, y_pred_rf)  
+r2_rf = r2_score(y_test, y_pred_rf)  
+# Show results
+print("Random Forest MAE:", round(mae_rf, 2), "minutes")
+print("Random Forest R-squared (R²):", round(r2_rf, 2))
+#Visual
+results = {
+    "Model": ["Linear Regression", "Random Forest"],
+    "Mean Absolute Error (minutes)": [mae, mae_rf],  
+    "R-squared (R²)": [r2, r2_rf]  
+}
+results_df = pd.DataFrame(results)
+#----------
+df_opt = X_test.copy()  
+df_opt = df_opt.reset_index(drop=True)  
+df_opt["predicted_wait_time"] = y_pred_rf 
+opt_model = pulp.LpProblem("Staff_Optimization", pulp.LpMinimize)
+staff_vars = [
+    pulp.LpVariable(f"staff_hour_{i}", lowBound=1, upBound=3, cat="Integer")
+    for i in range(len(df_opt))
+] 
+opt_model += pulp.lpSum(staff_vars), "Total_Staff_Hours"
+for i, row in df_opt.iterrows():
+    required_staff = row["orders"] / 20
+    opt_model += staff_vars[i] >= required_staff, f"WaitTimeLimit_hour_{i}"
+
+opt_model.solve()
+df_opt["recommended_staff"] = [int(var.varValue) for var in staff_vars]
+
+
+print(df_opt[["orders", "predicted_wait_time", "recommended_staff"]].head())
+
+#Visual 
+plot_df = df_opt.rename(columns={"recommended_staff": "Recommended_Staff"})
+
+plt.figure(figsize=(10, 5))
+sns.countplot(x="Recommended_Staff", data=plot_df, palette="Set2")
+plt.title("Distribution of Recommended Staff Levels")
+plt.xlabel("Recommended Staff")
+plt.ylabel("Number of Hours")
+plt.grid(axis='y')
+plt.tight_layout()
+plt.show()
+
+#Lineplot 
+hour_labels = []
+for i in range(len(plot_df)):
+    day = i // 9 + 1
+    hour = 8 + (i % 9)
+    label = f"D{day}-{hour}:00"
+    hour_labels.append(label)
+
+plot_df["Time_Label"] = hour_labels
+
+
+plt.figure(figsize=(14, 6))
+sns.lineplot(data=plot_df, x="Time_Label", y="predicted_wait_time", label="Predicted Wait Time (from RF Model)", color="blue")
+sns.lineplot(data=plot_df, x="Time_Label", y="Recommended_Staff", label="Recommended Staff", color="green")
+plt.axhline(2, color='red', linestyle='--', label='2-Min Target')
+plt.title("Wait Time vs Recommended Staff Levels After Optimization")
+plt.xlabel("Hour (Day–Time)")
+plt.ylabel("Wait Time (min) / Staff Count")
+
+step = 5
+plt.xticks(ticks=range(0, len(plot_df), step), labels=plot_df["Time_Label"][::step], rotation=45, fontsize=8)
+
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+        
+       
+    
