@@ -34,7 +34,7 @@ weather = ["Sunny","Cloudy","Rainy"]
 price_coffee = 2.5                    
 price_pastry = 3.0                     
 price_meal   = 5.0                     
-records = []                           # list to accumulate simulated rows
+records = []                          
 
 for day_idx in range(60):             
     day_name = days[day_idx % 7]      
